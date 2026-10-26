@@ -8,7 +8,22 @@ Full backup and migration of KVM/libvirt virtual machines between Debian servers
 curl -fsSL https://raw.githubusercontent.com/pavlobilan/kvm-backup/main/install.sh | sudo bash
 ```
 
-The installer then starts an interactive menu: **Back up a VM** or **Restore a VM**. Every stage is shown as a numbered step and asks only when a choice is needed. Later the menu is started with `sudo kvm-backup`.
+When the installation finishes, the interactive menu opens automatically: choose **1) Back up a VM** or **2) Restore a VM**. No separate command is needed after installing. Every stage is shown as a numbered step and asks only when a choice is needed.
+
+## Run again (already installed)
+
+```
+sudo kvm-backup
+```
+
+This opens the same menu. To skip the menu:
+
+```
+sudo kvm-backup backup
+sudo kvm-backup restore
+```
+
+Running the install command again updates kvm-backup to the latest version and also opens the menu.
 
 The user who runs `sudo` is added to the `kvmbackup` group, which lets WinSCP read and write the needed files without root (takes effect after the next login).
 
