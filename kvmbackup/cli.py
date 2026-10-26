@@ -233,14 +233,19 @@ def cmd_backup(vm, assume_yes, checksums):
 
     opts = {"checksums": checksums}
     print()
-    if a["state"] != "shut off":
-        print(warn("  The VM is running. It will be shut down and must stay off until its disks are copied."))
-        if not ask("  Shut down the VM and create the backup?", True, assume_yes):
+    # kvm-backup never shuts the VM down itself: wait until the user does it
+    while True:
+        state = virt.domain_state(vm)
+        if state == "shut off":
+            break
+        print(warn(f"  ⚠ VM '{vm}' is {state}. It must be shut off for a consistent copy of its disks."))
+        print("    Shut it down from the guest OS or in Cockpit (Shut down), then check again.")
+        if assume_yes or not wait_enter("    Press Enter to check again, or 0 to quit: "):
             print("Cancelled.")
             return 1
-        opts.update(shutdown=True, force=assume_yes or ask(
-            "  Force power-off if it does not shut down within 3 minutes?", False))
-    elif not ask(f"  Create a backup of '{vm}'?", True, assume_yes):
+        print()
+    print(ok(f"  ✔ VM '{vm}' is shut off."))
+    if not ask(f"  Create a backup of '{vm}'?", True, assume_yes):
         print("Cancelled.")
         return 1
 
@@ -294,26 +299,29 @@ def cmd_backup(vm, assume_yes, checksums):
     print("       if it is already installed:")
     print(f"         {bold('sudo kvm-backup')}")
     print()
-    print(warn(f"  VM '{vm}' is shut off. Do not start it until the files are copied."))
-
-    def cleanup(start):
-        errs = fsutil.revoke_acl(acl)
-        for e in errs:
-            print("  " + warn("⚠ " + e))
-        if start and virt.domain_state(vm) == "shut off":
-            virt.virsh("start", vm)
-            print(ok(f"  VM '{vm}' started."))
+    print(bad(f"  ⚠ Do NOT start VM '{vm}' until all files are copied."))
+    print(bad("    Starting it changes the disk files, and the copy on the new server will not match."))
+    print()
 
     if assume_yes:
-        print("  -y mode: no temporary WinSCP access granted; the VM will not be started automatically.")
+        print("  -y mode: no temporary WinSCP access was granted.")
         return 0
     try:
-        input(f"  Press Enter when copying is finished{' (the VM will be started again)' if res['was_running'] else ''}: ")
-        cleanup(res["was_running"])
+        input("  Press Enter when copying is finished: ")
     except (KeyboardInterrupt, EOFError):
         print()
-        cleanup(False)
-        print("  Interrupted. The VM was not started.")
+        print("  Interrupted.")
+    for e in fsutil.revoke_acl(acl):
+        print("  " + warn("⚠ " + e))
+    if virt.domain_state(vm) != "shut off":
+        print(bad(f"  ✖ VM '{vm}' was started before you pressed Enter."))
+        print(bad("    If it was running while files were copied, the copy may be inconsistent:"))
+        print(bad("    the restore will report a checksum mismatch. In that case shut the VM down"))
+        print(bad("    and run the backup again."))
+        print(warn("  Backup finished with a warning."))
+        return 1
+    print(ok(f"  ✔ VM '{vm}' stayed shut off during copying."))
+    print(f"  You can start it now: Cockpit → Virtual machines, or: {bold(f'sudo virsh start {vm}')}")
     print(ok("  Backup finished."))
     return 0
 

@@ -15,9 +15,9 @@ The user who runs `sudo` is added to the `kvmbackup` group, which lets WinSCP re
 ## Back up (old server)
 
 1. Choose a virtual machine.
-2. Review it (state, snapshot tree, disk files) and confirm; a running VM is shut down.
+2. Review it (state, snapshot tree, disk files). A running VM is never shut down by the tool: it asks you to shut it down and checks again.
 3. The configuration is saved to a single archive: `/var/lib/kvm-backup/<VM>_<date>.tar.gz`.
-4. The tool prints the install command for the new server, every file to copy with its source directory, the target directory on the new server (`/var/lib/kvm-backup/`) and what to run there. Copy the files with WinSCP, then press Enter: temporary read access is removed and the VM is started again if it was running.
+4. The tool prints the install command for the new server, every file to copy with its source directory, the target directory on the new server (`/var/lib/kvm-backup/`) and what to run there. Copy the files with WinSCP while the VM stays shut off, then press Enter: temporary read access is removed and the tool reports whether the VM stayed off.
 
 ## Restore (new server)
 

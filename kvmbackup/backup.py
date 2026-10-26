@@ -6,7 +6,6 @@ import re
 import shutil
 import socket
 import tarfile
-import time
 import xml.etree.ElementTree as ET
 
 from . import config, fsutil, virt, xmlutil
@@ -215,34 +214,12 @@ def summary(a):
     return out
 
 
-def _wait_off(job, vm, timeout):
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        if virt.domain_state(vm) == "shut off":
-            return True
-        left = int(deadline - time.time())
-        job.step_text = f"Waiting for the VM to shut down (up to {left} s left)"
-        time.sleep(3)
-    return False
-
-
 def run_backup(job, vm, opts):
     job.step("Checking VM state", 1)
     state = virt.domain_state(vm)
-    was_running = False
     if state != "shut off":
-        if not opts.get("shutdown"):
-            raise JobError(f"VM '{vm}' is {state}. It must be shut off for a consistent disk copy; "
-                           f"allow shutdown or shut it down first.")
-        was_running = True
-        job.step("Shutting down the VM (ACPI)", 3)
-        virt.virsh("shutdown", vm, check=False)
-        if not _wait_off(job, vm, int(config.get()["shutdown_timeout"])):
-            if not opts.get("force"):
-                raise JobError("The VM did not shut down in time. Shut it down manually or allow a forced power-off.")
-            job.step("Forcing VM power-off", 8)
-            virt.virsh("destroy", vm)
-        job.log("VM is shut off")
+        raise JobError(f"VM '{vm}' is {state}. Shut it down first; kvm-backup does not shut VMs down.")
+    was_running = False
 
     job.step("Collecting configuration, disks and snapshots", 10)
     a = analyse(vm)

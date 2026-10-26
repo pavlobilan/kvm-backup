@@ -7,7 +7,6 @@ DEFAULTS = {
     "backup_root": "/var/lib/kvm-backup",
     "transfer_group": "kvmbackup",
     "libvirt_uri": "qemu:///system",
-    "shutdown_timeout": 180,
     "nvram_dir": "/var/lib/libvirt/qemu/nvram",
     "swtpm_dir": "/var/lib/libvirt/swtpm",
 }
