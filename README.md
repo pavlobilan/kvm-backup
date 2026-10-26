@@ -4,6 +4,8 @@ Full backup and migration of KVM/libvirt virtual machines between Debian servers
 
 ## Install (on both servers)
 
+Run all commands on the KVM host (the Debian server running libvirt), not inside a virtual machine.
+
 ```
 curl -fsSL https://raw.githubusercontent.com/pavlobilan/kvm-backup/main/install.sh | sudo bash
 ```
