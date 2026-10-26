@@ -28,7 +28,11 @@ apt-get update -qq </dev/null
 apt-get install -y -qq --no-install-recommends $PKGS </dev/null >/dev/null
 
 say "Downloading kvm-backup"
-SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || true)"
+# Use the local copy only when this script is run from a file (not piped from curl)
+SRC_DIR=""
+if [ -n "${BASH_SOURCE[0]:-}" ] && [ -f "${BASH_SOURCE[0]}" ]; then
+  SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+fi
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 if [ -n "$SRC_DIR" ] && [ -f "$SRC_DIR/kvmbackup/cli.py" ]; then
