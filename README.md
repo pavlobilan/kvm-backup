@@ -16,7 +16,7 @@ The user who runs `sudo` is added to the `kvmbackup` group, which lets WinSCP re
 
 1. Choose a virtual machine.
 2. Review it (state, snapshot tree, disk files). A running VM is never shut down by the tool: it asks you to shut it down and checks again.
-3. The configuration is saved to a single archive: `/var/lib/kvm-backup/<VM>_<date>.tar.gz`.
+3. A SHA-256 checksum of every disk and snapshot file is calculated, and the configuration is saved to a single archive: `/var/lib/kvm-backup/<VM>_<date>.tar.gz`.
 4. The tool prints the install command for the new server, every file to copy with its source directory, the target directory on the new server (`/var/lib/kvm-backup/`) and what to run there. Copy the files with WinSCP while the VM stays shut off, then press Enter: temporary read access is removed and the tool reports whether the VM stayed off.
 
 ## Restore (new server)
@@ -25,6 +25,12 @@ The user who runs `sudo` is added to the `kvmbackup` group, which lets WinSCP re
 2. Every file listed in the archive is checked for presence and size; missing files are listed and the check can be repeated after copying them.
 3. After confirmation, checksums are verified, disks are moved to their original paths and the VM is recreated with all snapshots.
 4. The result is shown: disks, snapshot tree, current snapshot, VM state. The VM appears in Cockpit, ready to start.
+
+## Checksums
+
+- During backup, the SHA-256 checksum and size of every disk and snapshot file are stored in `manifest.json` inside the archive.
+- During restore, every file is checked for presence and size, then its SHA-256 is compared with the archive. On a mismatch the restore stops before anything is changed on the server.
+- Not covered by a separate checksum: ISO images (optional), the configuration archive itself (protected only by the gzip integrity check) and the result of copying disks between different file systems on the new server.
 
 ## Screenshots
 
