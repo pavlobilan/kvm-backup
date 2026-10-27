@@ -101,6 +101,7 @@ class TermJob:
         self.step_text = ""
         self.progress = 0
         self.mode, self.total, self.confirm = mode, total, confirm
+        self.label = ""
         self._started = False
 
     def phase(self, n, title):
@@ -108,7 +109,7 @@ class TermJob:
         if self._started and self.confirm and not pause():
             raise JobError("Cancelled. All changes made by this restore were rolled back.")
         self._started = True
-        step(self.mode, n, self.total, title)
+        step(self.mode, n, self.total, f"{title} · {self.label}" if self.label else title)
 
     def done(self, text):
         print(ok("  " + text))
@@ -156,6 +157,64 @@ def choose(title, items, render):
             return None
         if a.isdigit() and 1 <= int(a) <= len(items):
             return items[int(a) - 1]
+
+
+def parse_numbers(text, n):
+    """'2', '1 3', '1,3', '1-3' -> list of numbers in 1..n (order kept, no duplicates)."""
+    out = []
+    for tok in text.replace(",", " ").split():
+        if "-" in tok:
+            a, b = (int(x) for x in tok.split("-", 1))
+            nums = range(a, b + 1)
+            if a > b:
+                raise ValueError
+        else:
+            nums = [int(tok)]
+        for k in nums:
+            if not 1 <= k <= n:
+                raise ValueError
+            if k not in out:
+                out.append(k)
+    if not out:
+        raise ValueError
+    return out
+
+
+def choose_many(title, columns, rows, question, noun):
+    """Table with numbered rows; returns the selected items (list) or None to quit.
+    rows: list of (item, [cell, ...]); noun: e.g. "VM" for the examples."""
+    widths = [max(len(str(c)), *(len(str(r[1][i])) for r in rows)) for i, c in enumerate(columns)]
+    line = lambda cells: "  ".join(f"{str(x):<{w}}" for x, w in zip(cells, widths)).rstrip()
+    print(f"  {title}")
+    print()
+    print(bold(f"    No.  {line(columns)}"))
+    for i, (_, cells) in enumerate(rows, 1):
+        print(f"    {i:<3}  {line(cells)}")
+    print()
+    n = len(rows)
+    if n == 1:
+        prompt = "  Enter 1 to select it, or 0 to quit: "
+        print(f"  {question}")
+    else:
+        print(f"  {question} Enter one or more numbers:")
+        print(f"    {'2':<6} only {noun} 2")
+        if n == 2:
+            print(f"    {'1 2':<6} {noun}s 1 and 2")
+        else:
+            print(f"    {'1 3':<6} {noun}s 1 and 3")
+            print(f"    {'1-3':<6} {noun}s 1, 2 and 3 (a range)")
+        prompt = "  Numbers, or 0 to quit: "
+    while True:
+        try:
+            a = input(prompt).strip()
+        except EOFError:
+            return None
+        if a == "0":
+            return None
+        try:
+            return [rows[k - 1][0] for k in parse_numbers(a, n)]
+        except ValueError:
+            print(bad(f"  Enter numbers from 1 to {n}, for example: 2, 1 3 or 1-3."))
 
 
 def snap_tree(snaps, current, indent="  "):
@@ -219,60 +278,77 @@ def install_command():
     return f"curl -fsSL https://raw.githubusercontent.com/{path}/{branch}/install.sh | sudo bash"
 
 
+def names(items):
+    return ", ".join(f"'{x}'" for x in items)
+
+
 def cmd_backup(vm, assume_yes, checksums):
     vms = virt.list_domains()
     if not vms:
         raise JobError("There are no virtual machines on this server.")
 
-    step("Backup", 1, 4, "Choose a virtual machine")
-    if not vm:
-        states = {n: virt.domain_state(n) for n in vms}
-        vm = choose("Virtual machines on this server:", vms, lambda n: f"{n:<24} {st(states[n])}")
-        if not vm:
+    step("Backup", 1, 4, "Choose virtual machines")
+    if vm:
+        if vm not in vms:
+            raise JobError(f"VM '{vm}' not found. Available: {', '.join(vms)}")
+        selected = [vm]
+    else:
+        rows = [(n, [n, st(virt.domain_state(n)), len(virt.snapshot_list(n))]) for n in vms]
+        selected = choose_many("Virtual machines on this server:", ["Name", "State", "Snapshots"], rows,
+                               "Which VMs do you want to back up?", "VM")
+        if not selected:
             return 0
-    elif vm not in vms:
-        raise JobError(f"VM '{vm}' not found. Available: {', '.join(vms)}")
-    print(f"  Selected: {bold(vm)}")
+    print(ok(f"  ✔ Selected: {', '.join(selected)}"))
 
-    step("Backup", 2, 4, f"Review VM '{vm}'")
-    a = backup.analyse(vm)
-    print(f"  State: {st(a['state'])} · {a['vcpu']} vCPU · {human(int(a['memory_kib'] or 0) * 1024)}"
-          f" · {'UEFI' if a['nvram'] else 'BIOS'}{' · vTPM' if a['tpm'] else ''}")
-    print(f"  Snapshots: {len(a['snapshots'])}")
-    if a["snapshots"]:
-        snap_tree(a["snapshots"], a["current"], "    ")
-    print(f"  Disk and snapshot files: {len(a['files'])}, total {human(a['total_size'])}")
-    for w in a["warnings"]:
-        print("  " + warn("⚠ " + w))
+    step("Backup", 2, 4, "Review the VMs" if len(selected) > 1 else f"Review VM '{selected[0]}'")
+    for name in selected:
+        a = backup.analyse(name)
+        if len(selected) > 1:
+            print()
+            print(bold(f"  {name}"))
+        print(f"  State: {st(a['state'])} · {a['vcpu']} vCPU · {human(int(a['memory_kib'] or 0) * 1024)}"
+              f" · {'UEFI' if a['nvram'] else 'BIOS'}{' · vTPM' if a['tpm'] else ''}")
+        print(f"  Snapshots: {len(a['snapshots'])}")
+        if a["snapshots"]:
+            snap_tree(a["snapshots"], a["current"], "    ")
+        print(f"  Disk and snapshot files: {len(a['files'])}, total {human(a['total_size'])}")
+        for w in a["warnings"]:
+            print("  " + warn("⚠ " + w))
 
-    opts = {"checksums": checksums}
     print()
-    # kvm-backup never shuts the VM down itself: wait until the user does it
+    # kvm-backup never shuts a VM down itself: wait until the user does it
     while True:
-        state = virt.domain_state(vm)
-        if state == "shut off":
+        running = [(n, virt.domain_state(n)) for n in selected]
+        running = [(n, state) for n, state in running if state != "shut off"]
+        if not running:
             break
-        print(warn(f"  ⚠ VM '{vm}' is {state}. It must be shut off for a consistent copy of its disks."))
+        for n, state in running:
+            print(warn(f"  ⚠ VM '{n}' is {state}. It must be shut off for a consistent copy of its disks."))
         print("    Shut it down from the guest OS or in Cockpit (Shut down), then check again.")
         if assume_yes or not wait_enter("    Press Enter to check again, or 0 to quit: "):
             print("Cancelled.")
             return 1
         print()
-    print(ok(f"  ✔ VM '{vm}' is shut off."))
-    if not ask(f"  Create a backup of '{vm}'?", True, assume_yes):
+    print(ok(f"  ✔ Shut off: {', '.join(selected)}"))
+    if not ask(f"  Create a backup of {names(selected)}?", True, assume_yes):
         print("Cancelled.")
         return 1
 
-    step("Backup", 3, 4, "Create the backup")
-    job = TermJob()
-    backup.run_backup(job, vm, opts)
-    res = job.result
-    m, archive = res["manifest"], res["archive"]
-    print(ok("  Configuration saved: ") + bold(archive) + f" ({human(os.path.getsize(archive))})")
+    step("Backup", 3, 4, "Create the backups" if len(selected) > 1 else "Create the backup")
+    done, taken = [], set()
+    for name in selected:
+        if len(selected) > 1:
+            print()
+            print(bold(f"  {name}"))
+        job = TermJob()
+        backup.run_backup(job, name, {"checksums": checksums, "taken": taken})
+        m, archive = job.result["manifest"], job.result["archive"]
+        print(ok("  Configuration saved: ") + bold(archive) + f" ({human(os.path.getsize(archive))})")
+        done.append((name, m, archive))
 
     acl = []
     if not assume_yes:
-        acl, err = fsutil.grant_read_acl([e["original_path"] for e in m["files"]])
+        acl, err = fsutil.grant_read_acl([e["original_path"] for _, m, _ in done for e in m["files"]])
         if err:
             print("  " + warn("⚠ " + err))
 
@@ -293,7 +369,7 @@ def cmd_backup(vm, assume_yes, checksums):
             for e in fsutil.revoke_acl(acl):
                 print("  " + warn("⚠ " + e))
             print(warn("  Interrupted. Temporary WinSCP access was removed."))
-            print(f"  The archive is kept: {archive}")
+            print(f"  The archives are kept in {dest}/")
             return False
 
     # Step 4: copy the files (the old server only serves files from here on)
@@ -305,40 +381,50 @@ def cmd_backup(vm, assume_yes, checksums):
     else:
         print(f"    {bold('sudo apt install -y curl')}")
         print(f"    {bold(install)}")
-    print(f"  In its menu choose {bold('2) Restore a VM')}; it waits until the files are copied.")
+    print(f"  In its menu choose {bold('2) Restore VMs')}; it waits until the files are copied.")
     print()
     print(f"  Copy these files with WinSCP to {bold(dest + '/')} on the new server:")
+    count = size = 0
+    for name, m, archive in done:
+        print()
+        if len(done) > 1:
+            print(bold(f"   {name}"))
+        print(f"     from {bold(os.path.dirname(archive) + '/')}")
+        print(f"       {os.path.basename(archive):<40} {human(os.path.getsize(archive)):>10}   configuration archive")
+        for d, files in group_by_dir(m["files"]).items():
+            print(f"     from {bold(d + '/')}")
+            for e in sorted(files, key=lambda x: x["original_path"]):
+                rename = f"   → save as {e['backup_name']}" if e["backup_name"] != os.path.basename(e["original_path"]) else ""
+                opt = "   (ISO, optional)" if not e["required"] else ""
+                print(f"       {os.path.basename(e['original_path']):<40} {human(e['size']):>10}{opt}{rename}")
+        count += len(m["files"]) + 1
+        size += m["total_size"] + os.path.getsize(archive)
     print()
-    print(f"     from {bold(os.path.dirname(archive) + '/')}")
-    print(f"       {os.path.basename(archive):<40} {human(os.path.getsize(archive)):>10}   configuration archive")
-    for d, files in group_by_dir(m["files"]).items():
-        print(f"     from {bold(d + '/')}")
-        for e in sorted(files, key=lambda x: x["original_path"]):
-            rename = f"   → save as {e['backup_name']}" if e["backup_name"] != os.path.basename(e["original_path"]) else ""
-            opt = "   (ISO, optional)" if not e["required"] else ""
-            print(f"       {os.path.basename(e['original_path']):<40} {human(e['size']):>10}{opt}{rename}")
-    print(f"     Total: {len(m['files']) + 1} files, {human(m['total_size'] + os.path.getsize(archive))}")
+    print(f"     Total: {count} files, {human(size)}")
     print()
-    print(bad(f"  ⚠ Do NOT start VM '{vm}' until all files are copied."))
-    print(bad("    Starting it changes the disk files, and the copy on the new server will not match."))
+    vm_word = "VM" if len(selected) == 1 else "VMs"
+    print(bad(f"  ⚠ Do NOT start {vm_word} {names(selected)} until all files are copied."))
+    print(bad("    Starting a VM changes its disk files, and the copy on the new server will not match."))
     print()
     if not confirm("Press Enter when all files are copied:"):
         return 1
     for e in fsutil.revoke_acl(acl):
         print("  " + warn("⚠ " + e))
-    if virt.domain_state(vm) != "shut off":
-        print(bad(f"  ✖ VM '{vm}' was started before copying finished."))
-        print(bad("    If it was running while files were copied, the copy may be inconsistent:"))
+    started = [n for n in selected if virt.domain_state(n) != "shut off"]
+    if started:
+        print(bad(f"  ✖ Started before copying finished: {names(started)}."))
+        print(bad("    If a VM was running while its files were copied, the copy may be inconsistent:"))
         print(bad("    the restore will report a checksum mismatch. In that case shut the VM down"))
         print(bad("    and run the backup again."))
         print(warn("  Backup finished with a warning."))
         return 1
-    print(ok(f"  ✔ Files copied. VM '{vm}' stayed shut off; temporary WinSCP access removed."))
+    print(ok(f"  ✔ Files copied. {vm_word} stayed shut off; temporary WinSCP access removed."))
     print()
     print(f"  Continue on the new server: press {bold('Enter')} in the waiting menu, "
           f"or run {bold('sudo kvm-backup restore')}.")
-    print(f"  VM '{vm}' on this server can be started again: Cockpit → Virtual machines, or: "
-          f"{bold(f'sudo virsh start {vm}')}")
+    print(f"  The {vm_word} on this server can be started again in Cockpit → Virtual machines, or:")
+    for n in selected:
+        print(f"    {bold(f'sudo virsh start {n}')}")
     print(ok("  Backup finished."))
     return 0
 
@@ -431,77 +517,7 @@ def show_check(p):
     return moves
 
 
-def cmd_restore(archive, assume_yes, verify):
-    root = config.get()["backup_root"]
-
-    step("Restore", 1, 7, "Choose a backup archive")
-    if not archive:
-        while True:
-            found = find_archives(root)
-            if found:
-                break
-            print(f"  No backup archives in {bold(root + '/')} yet.")
-            print("  Copy the archive and the disk files there with WinSCP.")
-            if assume_yes or not wait_enter("  Press Enter to look again, or 0 to quit: "):
-                return 1
-        sel = choose("Backup archives:", found,
-                     lambda x: f"{x[1]['vm']['name']:<20} {when(x[1]['created'])}  "
-                               f"from {x[1]['source_host']}  ({os.path.basename(x[0])})")
-        if not sel:
-            return 0
-        archive = sel[0]
-    archive = os.path.abspath(archive)
-    if not os.path.isfile(archive):
-        raise JobError(f"File {archive} not found.")
-
-    work = os.path.join(root, ".work", f"restore-{os.getpid()}")
-    os.makedirs(work, exist_ok=True)
-    try:
-        m, bdir = read_archive(archive, work)
-        vm = m["vm"]
-        print(f"  Selected: {bold(os.path.basename(archive))}")
-        print(f"  VM {bold(vm['name'])} · created {when(m['created'])} on {m['source_host']}")
-        print(f"  {vm['vcpu']} vCPU · {human(int(vm['memory_kib'] or 0) * 1024)} · {vm['machine']}"
-              f"{' · UEFI' if m.get('nvram') else ''}{' · vTPM' if m.get('tpm') else ''}")
-        print(f"  Snapshots: {len(m['snapshots'])}")
-        if m["snapshots"]:
-            snap_tree(m["snapshots"], m.get("current_snapshot"), "    ")
-
-        step("Restore", 2, 7, "Check files")
-        import_dir = os.path.dirname(archive)
-        while True:
-            p = restore.plan(m, bdir, {"import_dir": import_dir})
-            moves = show_check(p)
-            if not p["errors"]:
-                break
-            print()
-            print(bad("  Restore is not possible yet:"))
-            for e in p["errors"]:
-                print(bad(f"   • {e}"))
-            print(f"\n  Disk files must be in {bold(import_dir + '/')} (next to the archive) "
-                  f"or already at their original paths.")
-            if assume_yes or not wait_enter("  Fix this and press Enter to check again, or 0 to quit: "):
-                return 1
-            print()
-        print(ok("  All files present."))
-        for (src, dst), n in moves.items():
-            print(f"  {n} file(s) will be moved: {src}/ → {bold(dst + '/')}")
-
-        print()
-        if not ask(f"  Restore VM '{p['name']}' now?", True, assume_yes):
-            print("Cancelled.")
-            return 1
-        job = TermJob("Restore", 7, confirm=not assume_yes)
-        restore.run_restore(job, m, bdir, p, {"verify": verify})
-        r = job.result
-    finally:
-        shutil.rmtree(work, ignore_errors=True)
-
-    name = r["vm"]
-    if not assume_yes:
-        pause()
-    step("Restore", 7, 7, "Result")
-    print(ok(f"  VM '{name}' restored."))
+def show_result(name, m, r):
     dom = ET.fromstring(virt.domain_xml(name))
     print("  Disks:")
     for d in dom.findall("devices/disk"):
@@ -525,11 +541,124 @@ def cmd_restore(archive, assume_yes, verify):
     for w in r.get("warnings") or []:
         print("  " + warn("⚠ " + w))
     print(f"  State: {st(virt.domain_state(name))} · autostart: {'yes' if virt.autostart(name) else 'no'}")
-    print()
-    print(ok("  The VM is ready to start: Cockpit → Virtual machines, or: ") + bold(f"sudo virsh start {name}"))
-    leftover = [f for f in os.listdir(import_dir) if f.endswith(".part")]
-    if leftover:
-        print(warn(f"  Unfinished files left in {import_dir}: {', '.join(leftover)}"))
+
+
+def cmd_restore(archive, assume_yes, verify):
+    root = config.get()["backup_root"]
+
+    step("Restore", 1, 7, "Choose backup archives")
+    if archive:
+        archives = [os.path.abspath(archive)]
+        if not os.path.isfile(archives[0]):
+            raise JobError(f"File {archives[0]} not found.")
+    else:
+        while True:
+            found = find_archives(root)
+            if found:
+                break
+            print(f"  No backup archives in {bold(root + '/')} yet.")
+            print("  Copy the archives and the disk files there with WinSCP.")
+            if assume_yes or not wait_enter("  Press Enter to look again, or 0 to quit: "):
+                return 1
+        rows = [(p, [m["vm"]["name"], when(m["created"]), m["source_host"], os.path.basename(p)]) for p, m in found]
+        while True:
+            archives = choose_many(f"Backup archives in {root}/:", ["VM", "Created", "From", "Archive"], rows,
+                                   "Which backups do you want to restore?", "backup")
+            if not archives:
+                return 0
+            vms = [dict(found)[a]["vm"]["name"] for a in archives]
+            dup = sorted({v for v in vms if vms.count(v) > 1})
+            if not dup:
+                break
+            print(bad(f"  Several backups of the same VM selected ({', '.join(dup)}); choose one backup per VM."))
+            print()
+
+    work = os.path.join(root, ".work", f"restore-{os.getpid()}")
+    os.makedirs(work, exist_ok=True)
+    items, restored = [], []
+    try:
+        for i, a in enumerate(archives):
+            m, bdir = read_archive(a, os.path.join(work, str(i)))
+            items.append({"archive": a, "m": m, "bdir": bdir, "import_dir": os.path.dirname(a)})
+        for it in items:
+            m, vm = it["m"], it["m"]["vm"]
+            print()
+            print(f"  {bold(vm['name'])} · {os.path.basename(it['archive'])} · created {when(m['created'])} "
+                  f"on {m['source_host']}")
+            print(f"  {vm['vcpu']} vCPU · {human(int(vm['memory_kib'] or 0) * 1024)} · {vm['machine']}"
+                  f"{' · UEFI' if m.get('nvram') else ''}{' · vTPM' if m.get('tpm') else ''}")
+            print(f"  Snapshots: {len(m['snapshots'])}")
+            if m["snapshots"]:
+                snap_tree(m["snapshots"], m.get("current_snapshot"), "    ")
+
+        step("Restore", 2, 7, "Check files")
+        while True:
+            errors, dests = [], {}
+            for it in items:
+                if len(items) > 1:
+                    print(bold(f"  {it['m']['vm']['name']}"))
+                it["plan"] = p = restore.plan(it["m"], it["bdir"], {"import_dir": it["import_dir"]})
+                it["moves"] = show_check(p)
+                errors += [f"{it['m']['vm']['name']}: {e}" if len(items) > 1 else e for e in p["errors"]]
+                for f in p["files"]:
+                    other = dests.setdefault(f["dest"], p["name"])
+                    if other != p["name"]:
+                        errors.append(f"VMs '{other}' and '{p['name']}' use the same disk path {f['dest']}.")
+                if len(items) > 1:
+                    print()
+            if not errors:
+                break
+            print()
+            print(bad("  Restore is not possible yet:"))
+            for e in errors:
+                print(bad(f"   • {e}"))
+            print(f"\n  Disk files must be in {bold(root + '/')} (next to the archive) "
+                  f"or already at their original paths.")
+            if assume_yes or not wait_enter("  Fix this and press Enter to check again, or 0 to quit: "):
+                return 1
+            print()
+        print(ok("  All files present."))
+        moves = {}
+        for it in items:
+            for k, n in it["moves"].items():
+                moves[k] = moves.get(k, 0) + n
+        for (src, dst), n in moves.items():
+            print(f"  {n} file(s) will be moved: {src}/ → {bold(dst + '/')}")
+
+        print()
+        vm_names = [it["plan"]["name"] for it in items]
+        if not ask(f"  Restore {'VM' if len(items) == 1 else 'VMs'} {names(vm_names)} now?", True, assume_yes):
+            print("Cancelled.")
+            return 1
+        job = TermJob("Restore", 7, confirm=not assume_yes)
+        for it in items:
+            job.label = it["plan"]["name"] if len(items) > 1 else ""
+            try:
+                restore.run_restore(job, it["m"], it["bdir"], it["plan"], {"verify": verify})
+            except BaseException:
+                if restored:
+                    print()
+                    print(warn(f"  Already restored: {names([n for n, _, _ in restored])}. "
+                               f"Not restored: {names(vm_names[len(restored):])}."))
+                raise
+            restored.append((job.result["vm"], it["m"], job.result))
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+    if not assume_yes:
+        pause()
+    step("Restore", 7, 7, "Result")
+    for name, m, r in restored:
+        print(ok(f"  ✔ VM '{name}' restored."))
+        show_result(name, m, r)
+        print()
+    print(ok("  Ready to start: Cockpit → Virtual machines, or:"))
+    for name, _, _ in restored:
+        print(f"    {bold(f'sudo virsh start {name}')}")
+    for d in sorted({it["import_dir"] for it in items}):
+        leftover = [f for f in os.listdir(d) if f.endswith(".part")]
+        if leftover:
+            print(warn(f"  Unfinished files left in {d}: {', '.join(leftover)}"))
     return 0
 
 
@@ -539,11 +668,11 @@ def main(argv=None):
     ap = argparse.ArgumentParser(prog="kvm-backup", description="Full backup and migration of KVM virtual machines.")
     ap.add_argument("-V", "--version", action="version", version=f"kvm-backup {__version__}")
     sub = ap.add_subparsers(dest="cmd")
-    b = sub.add_parser("backup", help="create a VM backup")
+    b = sub.add_parser("backup", help="back up VMs")
     b.add_argument("vm", nargs="?")
     b.add_argument("-y", "--yes", action="store_true", help="do not ask questions")
     b.add_argument("--no-checksum", action="store_true", help="skip SHA-256 checksums of disks")
-    r = sub.add_parser("restore", help="restore a VM from an archive")
+    r = sub.add_parser("restore", help="restore VMs from archives")
     r.add_argument("archive", nargs="?")
     r.add_argument("-y", "--yes", action="store_true", help="do not ask questions")
     r.add_argument("--no-verify", action="store_true", help="skip checksum verification")
@@ -562,8 +691,8 @@ def main(argv=None):
             print(bold(f"kvm-backup {__version__}: backup and migration of KVM virtual machines"))
             print()
             choice = choose("What do you want to do?", ["backup", "restore"],
-                            lambda x: {"backup": "Back up a VM",
-                                       "restore": "Restore a VM"}[x])
+                            lambda x: {"backup": "Back up VMs",
+                                       "restore": "Restore VMs"}[x])
             if not choice:
                 return 0
             return cmd_backup(None, False, True) if choice == "backup" else cmd_restore(None, False, True)

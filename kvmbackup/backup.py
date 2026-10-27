@@ -19,7 +19,7 @@ def safe_name(s):
     return re.sub(r"[^A-Za-z0-9._-]+", "_", s).strip("._") or "vm"
 
 
-def analyse(vm):
+def analyse(vm, taken=None):
     """Collect everything about the VM without changing anything on disk."""
     if not virt.domain_exists(vm):
         raise JobError(f"VM '{vm}' not found.")
@@ -139,7 +139,8 @@ def analyse(vm):
             files[fn] = e
 
     # Unique file names within the backup
-    used = set()
+    # Names already used by other VMs copied to the same directory
+    used = set(taken or ())
     for e in files.values():
         base = os.path.basename(e["original_path"])
         name, n = base, 1
@@ -148,6 +149,8 @@ def analyse(vm):
             name = f"{n}_{base}"
         used.add(name)
         e["backup_name"] = name
+    if taken is not None:
+        taken.update(used)
 
     # Internal snapshots missing from qcow2 files
     internal_present = {x for e in files.values() for x in e["internal_snapshots"]}
@@ -222,7 +225,7 @@ def run_backup(job, vm, opts):
     was_running = False
 
     job.step("Collecting configuration, disks and snapshots", 10)
-    a = analyse(vm)
+    a = analyse(vm, opts.get("taken"))
     for w in a["warnings"]:
         job.log("⚠ " + w)
     job.log(f"Snapshots: {len(a['snapshots'])}, disk files: {len(a['files'])}, size: {human(a['total_size'])}")
