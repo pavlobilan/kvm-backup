@@ -7,7 +7,8 @@ REPO="${KVMB_REPO:-https://github.com/pavlobilan/kvm-backup}"
 BRANCH="${KVMB_BRANCH:-main}"
 
 PREFIX=/opt/kvm-backup
-DATA_DIR=/var/lib/kvm-backup
+# Inside the default libvirt storage folder: copied disks land on the same disk as the VMs
+DATA_DIR=/var/lib/libvirt/images/kvm-backup
 GROUP=kvmbackup
 
 say()  { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
@@ -73,6 +74,9 @@ fi
 mkdir -p "$DATA_DIR"
 chown root:"$GROUP" "$DATA_DIR"
 chmod 2775 "$DATA_DIR"
+if ls /var/lib/kvm-backup/*.tar.gz >/dev/null 2>&1; then
+  say "Archives from an earlier version are in /var/lib/kvm-backup/; the folder is now $DATA_DIR/"
+fi
 
 say "kvm-backup is installed. Start it again any time with: sudo kvm-backup"
 

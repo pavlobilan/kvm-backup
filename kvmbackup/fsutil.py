@@ -43,12 +43,15 @@ def copy_sparse(src, dst, cb=None):
     shutil.copystat(src, dst)
 
 
+def existing_dir(p):
+    """Nearest existing directory for a path that may not exist yet."""
+    while not os.path.exists(p):
+        p = os.path.dirname(p)
+    return p
+
+
 def same_fs(a, b):
-    def existing(p):
-        while not os.path.exists(p):
-            p = os.path.dirname(p)
-        return p
-    return os.stat(existing(a)).st_dev == os.stat(existing(b)).st_dev
+    return os.stat(existing_dir(a)).st_dev == os.stat(existing_dir(b)).st_dev
 
 
 def free_bytes(path):

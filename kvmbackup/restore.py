@@ -137,10 +137,16 @@ def plan(m, bdir, opts):
         dests.add(dst)
         files.append(item)
 
-    if copy_bytes and os.path.isabs(target_dir):
-        free = fsutil.free_bytes(target_dir if not use_original else "/")
-        if free < copy_bytes:
-            errors.append(f"Not enough space: {human(copy_bytes)} needed, {human(free)} free.")
+    # Free space is checked on the file system each disk is copied to
+    need = {}
+    for f in files:
+        if f["action"] == "copy":
+            d = fsutil.existing_dir(os.path.dirname(f["dest"]))
+            need.setdefault(os.stat(d).st_dev, [d, 0])[1] += f["size"]
+    for d, size in need.values():
+        free = fsutil.free_bytes(d)
+        if free < size:
+            errors.append(f"Not enough space in {d}: {human(size)} needed, {human(free)} free.")
 
     nvram_dst = None
     if m.get("nvram"):

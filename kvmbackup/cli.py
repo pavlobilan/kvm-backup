@@ -383,7 +383,9 @@ def cmd_backup(vm, assume_yes, checksums):
         print(f"    {bold(install)}")
     print(f"  In its menu choose {bold('2) Restore VMs')}; it waits until the files are copied.")
     print()
-    print(f"  Copy these files with WinSCP to {bold(dest + '/')} on the new server:")
+    print(f"  Copy these files with WinSCP to {bold(dest + '/')} on the new server.")
+    print("  In WinSCP type this path into the address bar: the parent folder cannot be listed")
+    print("  by a normal user, but this folder is open to the group " + config.get()["transfer_group"] + ".")
     count = size = 0
     for name, m, archive in done:
         print()
@@ -401,6 +403,7 @@ def cmd_backup(vm, assume_yes, checksums):
         size += m["total_size"] + os.path.getsize(archive)
     print()
     print(f"     Total: {count} files, {human(size)}")
+    print(f"     The new server needs at least {human(size)} free in {dest}/")
     print()
     vm_word = "VM" if len(selected) == 1 else "VMs"
     print(bad(f"  ⚠ Do NOT start {vm_word} {names(selected)} until all files are copied."))
@@ -472,10 +475,11 @@ def peek_manifest(path):
 
 
 def find_archives(root):
-    if not os.path.isdir(root):
-        return []
-    paths = sorted((os.path.join(root, f) for f in os.listdir(root) if f.endswith(".tar.gz")),
-                   key=os.path.getmtime, reverse=True)
+    paths = []
+    for d in [root] + list(config.get().get("legacy_roots") or []):
+        if os.path.isdir(d):
+            paths += [os.path.join(d, f) for f in os.listdir(d) if f.endswith(".tar.gz")]
+    paths.sort(key=os.path.getmtime, reverse=True)
     return [(p, m) for p, m in ((p, peek_manifest(p)) for p in paths) if m]
 
 
@@ -574,8 +578,11 @@ def cmd_restore(archive, assume_yes, verify):
             print(f"  The restore then moves the disk files from {root}/ to their original location")
             print("  (for example /var/lib/libvirt/images/). There is no need to do it yourself.")
             print()
+            print(f"  Free space in {root}/ on this server: {bold(human(fsutil.free_bytes(root)))}")
             print("  Tip: copy the archive first. Then step 2 shows every disk file that is still missing.")
             print(f"  WinSCP must log in as root or as a member of the group {bold(group)}.")
+            print("  Type the folder path into the WinSCP address bar: the parent folder cannot be listed")
+            print("  by a normal user.")
             print()
             if assume_yes or not wait_enter("  Press Enter to look again, or 0 to quit: "):
                 return 1
@@ -702,7 +709,13 @@ def main(argv=None):
         return 1
     signal.signal(signal.SIGHUP, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt()))
     signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt()))
-    os.makedirs(config.get()["backup_root"], exist_ok=True)
+    root = config.get()["backup_root"]
+    if not os.path.isdir(root):
+        os.makedirs(root)
+        gid = fsutil.transfer_gid()
+        if gid is not None:
+            os.chown(root, 0, gid)
+        os.chmod(root, 0o2775)
 
     cmd = args.cmd
     try:
