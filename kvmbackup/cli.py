@@ -556,8 +556,19 @@ def cmd_restore(archive, assume_yes, verify):
             found = find_archives(root)
             if found:
                 break
-            print(f"  No backup archives in {bold(root + '/')} yet.")
-            print("  Copy the archives and the disk files there with WinSCP.")
+            group = config.get()["transfer_group"]
+            print(warn(f"  No backup archives in {root}/ yet."))
+            print()
+            print(f"  Copy with WinSCP into {bold(root + '/')} on this server, all into this one directory")
+            print("  (no subfolders):")
+            print(f"    • the configuration archive of each VM: {bold('<VM>_<date>.tar.gz')}")
+            print(f"      created by the backup on the old server, in {root}/ there;")
+            print("    • all disk and snapshot files of the VM, as listed in step 4 of the backup;")
+            print(f"      a file marked {bold('→ save as <name>')} must be saved under that name.")
+            print()
+            print("  Copy the archive first: after that, step 2 lists every disk file that is still missing.")
+            print(f"  WinSCP must log in as root or as a member of the group {bold(group)}.")
+            print()
             if assume_yes or not wait_enter("  Press Enter to look again, or 0 to quit: "):
                 return 1
         rows = [(p, [m["vm"]["name"], when(m["created"]), m["source_host"], os.path.basename(p)]) for p, m in found]
