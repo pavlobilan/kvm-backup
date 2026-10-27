@@ -39,14 +39,10 @@ Running the install command again updates kvm-backup to the latest version and a
 
 ## Back up (old server)
 
-Each step shows its result; the next one starts after you confirm with Enter.
-
 1. **Choose a virtual machine.**
 2. **Review the VM** (state, snapshot tree, disk files). A running VM is never shut down by the tool: it asks you to shut it down and checks again.
 3. **Create the backup.** A SHA-256 checksum of every disk and snapshot file is calculated, and the configuration is saved to a single archive: `/var/lib/kvm-backup/<VM>_<date>.tar.gz`.
-4. **Prepare the new server.** The tool prints the commands to run there: first `sudo apt install -y curl`, then the kvm-backup install command.
-5. **Copy the files.** The tool lists every file with its source directory and the target directory on the new server (`/var/lib/kvm-backup/`). Copy them with WinSCP while the VM stays shut off; after Enter, temporary read access is removed and the tool reports whether the VM stayed off.
-6. **Start the restore on the new server.**
+4. **Copy the files to the new server.** The tool shows the commands that install kvm-backup on the new server (`sudo apt install -y curl`, then the install command; this creates the target directory), every file to copy with its source directory and the target directory (`/var/lib/kvm-backup/`). Copy them with WinSCP while the VM stays shut off; after Enter, temporary read access is removed and the tool reports whether the VM stayed off.
 
 ## Restore (new server)
 

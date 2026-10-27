@@ -222,7 +222,7 @@ def cmd_backup(vm, assume_yes, checksums):
     if not vms:
         raise JobError("There are no virtual machines on this server.")
 
-    step("Backup", 1, 6, "Choose a virtual machine")
+    step("Backup", 1, 4, "Choose a virtual machine")
     if not vm:
         states = {n: virt.domain_state(n) for n in vms}
         vm = choose("Virtual machines on this server:", vms, lambda n: f"{n:<24} {st(states[n])}")
@@ -232,7 +232,7 @@ def cmd_backup(vm, assume_yes, checksums):
         raise JobError(f"VM '{vm}' not found. Available: {', '.join(vms)}")
     print(f"  Selected: {bold(vm)}")
 
-    step("Backup", 2, 6, f"Review VM '{vm}'")
+    step("Backup", 2, 4, f"Review VM '{vm}'")
     a = backup.analyse(vm)
     print(f"  State: {st(a['state'])} · {a['vcpu']} vCPU · {human(int(a['memory_kib'] or 0) * 1024)}"
           f" · {'UEFI' if a['nvram'] else 'BIOS'}{' · vTPM' if a['tpm'] else ''}")
@@ -261,7 +261,7 @@ def cmd_backup(vm, assume_yes, checksums):
         print("Cancelled.")
         return 1
 
-    step("Backup", 3, 6, "Create the backup")
+    step("Backup", 3, 4, "Create the backup")
     job = TermJob()
     backup.run_backup(job, vm, opts)
     res = job.result
@@ -294,28 +294,17 @@ def cmd_backup(vm, assume_yes, checksums):
             print(f"  The archive is kept: {archive}")
             return False
 
-    # Step 4: prepare the new server
-    step("Backup", 4, 6, "Prepare the new server")
-    print(warn(f"  ⚠ Keep VM '{vm}' shut off until step 5 is finished."))
-    print()
+    # Step 4: copy the files (the old server only serves files from here on)
+    step("Backup", 4, 4, "Copy the files to the new server")
+    print("  On the new server, install kvm-backup first; it creates the target directory:")
     if local:
-        print("  Copy the kvm-backup folder to the new server (for example to your home directory)")
-        print("  and run there:")
+        print("    copy the kvm-backup folder there (for example to your home directory) and run:")
         print(f"    {bold(install)}")
     else:
-        print("  On the new server, install curl first (minimal Debian does not include it):")
         print(f"    {bold('sudo apt install -y curl')}")
-        print("  Then install kvm-backup:")
         print(f"    {bold(install)}")
-    print(f"  This installs kvm-backup, creates {bold(dest + '/')} and opens the menu.")
-    print(f"  In the menu choose {bold('2) Restore a VM')}; it will wait until the files are copied.")
+    print(f"  In its menu choose {bold('2) Restore a VM')}; it waits until the files are copied.")
     print()
-    if not confirm("Press Enter when kvm-backup is installed on the new server:"):
-        return 1
-    print(ok("  ✔ New server prepared."))
-
-    # Step 5: copy the files
-    step("Backup", 5, 6, "Copy the files")
     print(f"  Copy these files with WinSCP to {bold(dest + '/')} on the new server:")
     print()
     print(f"     from {bold(os.path.dirname(archive) + '/')}")
@@ -343,14 +332,9 @@ def cmd_backup(vm, assume_yes, checksums):
         print(warn("  Backup finished with a warning."))
         return 1
     print(ok(f"  ✔ Files copied. VM '{vm}' stayed shut off; temporary WinSCP access removed."))
-
-    # Step 6: start the restore
-    step("Backup", 6, 6, "Start the restore on the new server")
-    print(f"  If the menu from step 4 is still waiting on the new server, press {bold('Enter')} there.")
-    print("  Otherwise run on the new server:")
-    print(f"    {bold('sudo kvm-backup restore')}")
-    print("  The new server checks every file and shows the restore result.")
     print()
+    print(f"  Continue on the new server: press {bold('Enter')} in the waiting menu, "
+          f"or run {bold('sudo kvm-backup restore')}.")
     print(f"  VM '{vm}' on this server can be started again: Cockpit → Virtual machines, or: "
           f"{bold(f'sudo virsh start {vm}')}")
     print(ok("  Backup finished."))
