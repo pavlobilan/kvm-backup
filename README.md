@@ -39,17 +39,26 @@ Running the install command again updates kvm-backup to the latest version and a
 
 ## Back up (old server)
 
-1. Choose a virtual machine.
-2. Review it (state, snapshot tree, disk files). A running VM is never shut down by the tool: it asks you to shut it down and checks again.
-3. A SHA-256 checksum of every disk and snapshot file is calculated, and the configuration is saved to a single archive: `/var/lib/kvm-backup/<VM>_<date>.tar.gz`.
-4. The tool prints the install command for the new server, every file to copy with its source directory, the target directory on the new server (`/var/lib/kvm-backup/`) and what to run there. Copy the files with WinSCP while the VM stays shut off, then press Enter: temporary read access is removed and the tool reports whether the VM stayed off.
+Each step shows its result; the next one starts after you confirm with Enter.
+
+1. **Choose a virtual machine.**
+2. **Review the VM** (state, snapshot tree, disk files). A running VM is never shut down by the tool: it asks you to shut it down and checks again.
+3. **Create the backup.** A SHA-256 checksum of every disk and snapshot file is calculated, and the configuration is saved to a single archive: `/var/lib/kvm-backup/<VM>_<date>.tar.gz`.
+4. **Prepare the new server.** The tool prints the install command to run there (and `sudo apt install -y curl` in case `curl` is missing).
+5. **Copy the files.** The tool lists every file with its source directory and the target directory on the new server (`/var/lib/kvm-backup/`). Copy them with WinSCP while the VM stays shut off; after Enter, temporary read access is removed and the tool reports whether the VM stayed off.
+6. **Start the restore on the new server.**
 
 ## Restore (new server)
 
-1. Choose a backup archive from `/var/lib/kvm-backup/` (the tool waits if nothing has been copied yet).
-2. Every file listed in the archive is checked for presence and size; missing files are listed and the check can be repeated after copying them.
-3. After confirmation, checksums are verified, disks are moved to their original paths and the VM is recreated with all snapshots.
-4. The result is shown: disks, snapshot tree, current snapshot, VM state. The VM appears in Cockpit, ready to start.
+Each step shows its result; the next one starts after you confirm with Enter (or enter 0 to cancel and roll back all changes).
+
+1. **Choose a backup archive** from `/var/lib/kvm-backup/` (the tool waits if nothing has been copied yet).
+2. **Check files.** Every file listed in the archive is checked for presence and size; missing files are listed and the check can be repeated after copying them.
+3. **Verify checksums.**
+4. **Place disk files** at their original paths.
+5. **Create the VM** in libvirt (links between disk files, NVRAM, networks, storage pool).
+6. **Restore snapshots**, including branches and the current snapshot.
+7. **Result:** disks, snapshot tree, current snapshot, VM state. The VM appears in Cockpit, ready to start.
 
 ## Checksums
 

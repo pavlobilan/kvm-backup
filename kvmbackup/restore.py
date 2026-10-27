@@ -232,6 +232,9 @@ def run_restore(job, m, bdir, p, opts):
 
     try:
         # 1. Checksums
+        _phase(job, 3, "Verify checksums")
+        if not opts.get("verify", True) or not any(mf[f["name"]].get("sha256") for f in files):
+            job.log("⚠ Checksums are not verified (skipped or not stored in the archive).")
         if opts.get("verify", True):
             todo = [f for f in files if mf[f["name"]].get("sha256")]
             if todo:
@@ -249,26 +252,28 @@ def run_restore(job, m, bdir, p, opts):
                     prog.finish("all files match")
 
         # 2. Place files
+        _phase(job, 4, "Place disk files")
         path_map = {}
+        placed = {}
         copy_total = sum(f["size"] for f in files if f["action"] == "copy")
         prog = job.bytes_progress(copy_total, 35, 70, "Copying disks")
-        job.step("Placing disk files", 35)
         for f in files:
             src, dst = f["source"], f["dest"]
             path_map[f["original_path"]] = dst
             if f["action"] == "on-place":
+                placed.setdefault(("already in place in", os.path.dirname(dst)), []).append(f["name"])
                 continue
             _mkdirs(os.path.dirname(dst))
             if f["action"] == "rename":
                 os.rename(src, dst)
                 rb.add(f"move {f['name']}", lambda s=src, d=dst: os.rename(d, s))
-                job.log(f"{f['name']} → {os.path.dirname(dst)}/")
+                placed.setdefault(("moved to", os.path.dirname(dst)), []).append(f["name"])
             else:
                 part = dst + ".part"
                 rb.add(f"copy {f['name']}", lambda d=dst, pt=part: [os.remove(x) for x in (d, pt) if os.path.exists(x)])
                 fsutil.copy_sparse(src, part, lambda n, b=f["name"]: prog(n, b))
                 os.rename(part, dst)
-                job.log(f"{f['name']} → {os.path.dirname(dst)}/ (copied)")
+                placed.setdefault(("copied to", os.path.dirname(dst)), []).append(f["name"])
                 if opts.get("mode", "move") == "move":
                     to_delete_after.append(src)
             os.chown(dst, 0, 0)
@@ -282,8 +287,11 @@ def run_restore(job, m, bdir, p, opts):
 
         if copy_total and hasattr(prog, "finish"):
             prog.finish("copied")
+        for (how, d), names in placed.items():
+            _done(job, f"✔ {len(names)} file(s) {how} {d}/")
 
         # 3. Backing file chains
+        _phase(job, 5, "Create the VM")
         job.step("Updating links between disk files", 71)
         for f in files:
             e = mf[f["name"]]
@@ -298,7 +306,6 @@ def run_restore(job, m, bdir, p, opts):
                 virt.qemu_img_rebase_unsafe(f["dest"], new_backing, e.get("backing_format"))
                 rb.add(f"rebase {f['name']}", lambda d=f["dest"], r=raw, fm=e.get("backing_format"):
                        virt.qemu_img_rebase_unsafe(d, r, fm))
-                job.log(f"{f['name']}: backing file → {new_backing}")
 
         # 4. NVRAM and TPM
         ctx = {"path_map": path_map, "volume_map": m.get("volume_map") or {},
@@ -389,9 +396,12 @@ def run_restore(job, m, bdir, p, opts):
             fh.write(xmlutil.tostring(dom))
         virt.virsh("define", dfile)
         rb.add(f"VM {name}", lambda: _undefine(name))
-        job.log(f"VM '{name}' defined")
+        _done(job, f"✔ VM '{name}' defined in libvirt")
 
         # 8. Snapshots (parents before children, which preserves branches)
+        _phase(job, 6, "Restore snapshots")
+        if not snap_xml:
+            job.log("The VM has no snapshots.")
         total = max(len(snap_xml), 1)
         for i, (s, x) in enumerate(snap_xml):
             job.step(f"Restoring snapshot '{s['name']}' ({i + 1}/{len(snap_xml)})", 86 + 11 * i / total)
@@ -402,7 +412,9 @@ def run_restore(job, m, bdir, p, opts):
             virt.virsh("snapshot-create", name, "--xmlfile", sf, "--redefine")
         if m.get("current_snapshot"):
             virt.virsh("snapshot-current", name, m["current_snapshot"])
-            job.log(f"Current snapshot: {m['current_snapshot']}")
+            _done(job, f"✔ {len(snap_xml)} snapshot(s) restored, current: {m['current_snapshot']}")
+        elif snap_xml:
+            _done(job, f"✔ {len(snap_xml)} snapshot(s) restored")
 
         if opts.get("autostart", True) and m["vm"].get("autostart"):
             virt.virsh("autostart", name, check=False)
@@ -410,7 +422,7 @@ def run_restore(job, m, bdir, p, opts):
         for pn, d in virt.pools().items():
             if d in {os.path.dirname(f["dest"]) for f in files}:
                 virt.virsh("pool-refresh", pn, check=False)
-    except Exception:
+    except BaseException:
         if rb.actions:
             job.log("Error, rolling back changes…")
             rb.run()
@@ -425,6 +437,21 @@ def run_restore(job, m, bdir, p, opts):
             job.log(f"⚠ Could not delete {src}: {e}")
     job.result = {"vm": name, "files": files, "snapshots": len(snap_xml),
                   "current": m.get("current_snapshot"), "nvram": ctx.get("nvram"), "warnings": warns}
+
+
+def _phase(job, n, title):
+    """Start a numbered restore step (the terminal UI may ask to continue first)."""
+    if hasattr(job, "phase"):
+        job.phase(n, title)
+    else:
+        job.step(title)
+
+
+def _done(job, text):
+    if hasattr(job, "done"):
+        job.done(text)
+    else:
+        job.log(text)
 
 
 def _mkdirs(path):

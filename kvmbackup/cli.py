@@ -94,12 +94,24 @@ class Bar:
 class TermJob:
     """Progress reporter used by backup/restore: step/log/bytes_progress/result."""
 
-    def __init__(self):
+    def __init__(self, mode="", total=0, confirm=True):
         self.result = None
         self.user = os.environ.get("SUDO_USER") or "root"
         self.created = time.time()
         self.step_text = ""
         self.progress = 0
+        self.mode, self.total, self.confirm = mode, total, confirm
+        self._started = False
+
+    def phase(self, n, title):
+        """Numbered step; from the second one on, wait for Enter before starting it."""
+        if self._started and self.confirm and not pause():
+            raise JobError("Cancelled. All changes made by this restore were rolled back.")
+        self._started = True
+        step(self.mode, n, self.total, title)
+
+    def done(self, text):
+        print(ok("  " + text))
 
     def step(self, text, progress=None):
         print(f"  • {text}")
@@ -210,7 +222,7 @@ def cmd_backup(vm, assume_yes, checksums):
     if not vms:
         raise JobError("There are no virtual machines on this server.")
 
-    step("Backup", 1, 4, "Choose a virtual machine")
+    step("Backup", 1, 6, "Choose a virtual machine")
     if not vm:
         states = {n: virt.domain_state(n) for n in vms}
         vm = choose("Virtual machines on this server:", vms, lambda n: f"{n:<24} {st(states[n])}")
@@ -220,7 +232,7 @@ def cmd_backup(vm, assume_yes, checksums):
         raise JobError(f"VM '{vm}' not found. Available: {', '.join(vms)}")
     print(f"  Selected: {bold(vm)}")
 
-    step("Backup", 2, 4, f"Review VM '{vm}'")
+    step("Backup", 2, 6, f"Review VM '{vm}'")
     a = backup.analyse(vm)
     print(f"  State: {st(a['state'])} · {a['vcpu']} vCPU · {human(int(a['memory_kib'] or 0) * 1024)}"
           f" · {'UEFI' if a['nvram'] else 'BIOS'}{' · vTPM' if a['tpm'] else ''}")
@@ -249,7 +261,7 @@ def cmd_backup(vm, assume_yes, checksums):
         print("Cancelled.")
         return 1
 
-    step("Backup", 3, 4, "Create the backup")
+    step("Backup", 3, 6, "Create the backup")
     job = TermJob()
     backup.run_backup(job, vm, opts)
     res = job.result
@@ -263,23 +275,48 @@ def cmd_backup(vm, assume_yes, checksums):
             print("  " + warn("⚠ " + err))
 
     dest = config.get()["backup_root"]
-    step("Backup", 4, 4, "Move the files to the new server")
     cmd = install_command()
-    if cmd in (None, "local"):
-        print("  a) Copy the kvm-backup folder to the new server (for example to your home directory)")
-        print("     and install it there; this creates the target directory and opens the menu:")
-        install = "sudo bash ~/kvm-backup/install.sh"
-        print(f"       {bold(install)}")
-        print(f"     In the menu choose {bold('2) Restore a VM')}; it will wait until the files are copied.")
-    else:
-        install = cmd
-    if cmd not in (None, "local"):
-        print("  a) Prepare the new server: run this command there. It installs kvm-backup,")
-        print(f"     creates {dest}/ and opens the menu:")
-        print(f"       {bold(install)}")
-        print(f"     In the menu choose {bold('2) Restore a VM')}; it will wait until the files are copied.")
+    local = cmd in (None, "local")
+    install = "sudo bash ~/kvm-backup/install.sh" if local else cmd
+
+    def confirm(prompt):
+        """Wait for Enter; on Ctrl+C or end of input remove the temporary access and stop."""
+        if assume_yes:
+            return True
+        try:
+            input(f"  {prompt} ")
+            return True
+        except (KeyboardInterrupt, EOFError):
+            print()
+            for e in fsutil.revoke_acl(acl):
+                print("  " + warn("⚠ " + e))
+            print(warn("  Interrupted. Temporary WinSCP access was removed."))
+            print(f"  The archive is kept: {archive}")
+            return False
+
+    # Step 4: prepare the new server
+    step("Backup", 4, 6, "Prepare the new server")
+    print(warn(f"  ⚠ Keep VM '{vm}' shut off until step 5 is finished."))
     print()
-    print(f"  b) Copy these files with WinSCP to {bold(dest + '/')} on the new server:")
+    if local:
+        print("  Copy the kvm-backup folder to the new server (for example to your home directory)")
+        print("  and run there:")
+        print(f"    {bold(install)}")
+    else:
+        print("  On the new server, run:")
+        print(f"    {bold(install)}")
+        print(f"  If it fails with {bold('-bash: curl: command not found')}, install curl first and run it again:")
+        print(f"    {bold('sudo apt install -y curl')}")
+    print(f"  This installs kvm-backup, creates {bold(dest + '/')} and opens the menu.")
+    print(f"  In the menu choose {bold('2) Restore a VM')}; it will wait until the files are copied.")
+    print()
+    if not confirm("Press Enter when kvm-backup is installed on the new server:"):
+        return 1
+    print(ok("  ✔ New server prepared."))
+
+    # Step 5: copy the files
+    step("Backup", 5, 6, "Copy the files")
+    print(f"  Copy these files with WinSCP to {bold(dest + '/')} on the new server:")
     print()
     print(f"     from {bold(os.path.dirname(archive) + '/')}")
     print(f"       {os.path.basename(archive):<40} {human(os.path.getsize(archive)):>10}   configuration archive")
@@ -291,37 +328,31 @@ def cmd_backup(vm, assume_yes, checksums):
             print(f"       {os.path.basename(e['original_path']):<40} {human(e['size']):>10}{opt}{rename}")
     print(f"     Total: {len(m['files']) + 1} files, {human(m['total_size'] + os.path.getsize(archive))}")
     print()
-    print("  c) Start the restore on the new server:")
-    print(f"     if the menu from step a) is still waiting there, just press {bold('Enter')}.")
-    print("     Otherwise run the command below and choose " + bold("2) Restore a VM") + ":")
-    print("       if kvm-backup is not installed yet:")
-    print(f"         {bold(install)}")
-    print("       if it is already installed:")
-    print(f"         {bold('sudo kvm-backup')}")
-    print()
     print(bad(f"  ⚠ Do NOT start VM '{vm}' until all files are copied."))
     print(bad("    Starting it changes the disk files, and the copy on the new server will not match."))
     print()
-
-    if assume_yes:
-        print("  -y mode: no temporary WinSCP access was granted.")
-        return 0
-    try:
-        input("  Press Enter when copying is finished: ")
-    except (KeyboardInterrupt, EOFError):
-        print()
-        print("  Interrupted.")
+    if not confirm("Press Enter when all files are copied:"):
+        return 1
     for e in fsutil.revoke_acl(acl):
         print("  " + warn("⚠ " + e))
     if virt.domain_state(vm) != "shut off":
-        print(bad(f"  ✖ VM '{vm}' was started before you pressed Enter."))
+        print(bad(f"  ✖ VM '{vm}' was started before copying finished."))
         print(bad("    If it was running while files were copied, the copy may be inconsistent:"))
         print(bad("    the restore will report a checksum mismatch. In that case shut the VM down"))
         print(bad("    and run the backup again."))
         print(warn("  Backup finished with a warning."))
         return 1
-    print(ok(f"  ✔ VM '{vm}' stayed shut off during copying."))
-    print(f"  You can start it now: Cockpit → Virtual machines, or: {bold(f'sudo virsh start {vm}')}")
+    print(ok(f"  ✔ Files copied. VM '{vm}' stayed shut off; temporary WinSCP access removed."))
+
+    # Step 6: start the restore
+    step("Backup", 6, 6, "Start the restore on the new server")
+    print(f"  If the menu from step 4 is still waiting on the new server, press {bold('Enter')} there.")
+    print("  Otherwise run on the new server:")
+    print(f"    {bold('sudo kvm-backup restore')}")
+    print("  The new server checks every file and shows the restore result.")
+    print()
+    print(f"  VM '{vm}' on this server can be started again: Cockpit → Virtual machines, or: "
+          f"{bold(f'sudo virsh start {vm}')}")
     print(ok("  Backup finished."))
     return 0
 
@@ -376,6 +407,15 @@ def find_archives(root):
     return [(p, m) for p, m in ((p, peek_manifest(p)) for p in paths) if m]
 
 
+def pause():
+    """Wait for Enter after a finished step. False when the user enters 0."""
+    print()
+    try:
+        return input("  Press Enter to continue, or 0 to cancel: ").strip() != "0"
+    except EOFError:
+        return False
+
+
 def wait_enter(prompt):
     """True to retry, False to quit."""
     try:
@@ -408,7 +448,7 @@ def show_check(p):
 def cmd_restore(archive, assume_yes, verify):
     root = config.get()["backup_root"]
 
-    step("Restore", 1, 4, "Choose a backup archive")
+    step("Restore", 1, 7, "Choose a backup archive")
     if not archive:
         while True:
             found = find_archives(root)
@@ -441,7 +481,7 @@ def cmd_restore(archive, assume_yes, verify):
         if m["snapshots"]:
             snap_tree(m["snapshots"], m.get("current_snapshot"), "    ")
 
-        step("Restore", 2, 4, "Check files")
+        step("Restore", 2, 7, "Check files")
         import_dir = os.path.dirname(archive)
         while True:
             p = restore.plan(m, bdir, {"import_dir": import_dir})
@@ -461,18 +501,20 @@ def cmd_restore(archive, assume_yes, verify):
         for (src, dst), n in moves.items():
             print(f"  {n} file(s) will be moved: {src}/ → {bold(dst + '/')}")
 
-        step("Restore", 3, 4, "Restore the VM")
+        print()
         if not ask(f"  Restore VM '{p['name']}' now?", True, assume_yes):
             print("Cancelled.")
             return 1
-        job = TermJob()
+        job = TermJob("Restore", 7, confirm=not assume_yes)
         restore.run_restore(job, m, bdir, p, {"verify": verify})
         r = job.result
     finally:
         shutil.rmtree(work, ignore_errors=True)
 
     name = r["vm"]
-    step("Restore", 4, 4, "Result")
+    if not assume_yes:
+        pause()
+    step("Restore", 7, 7, "Result")
     print(ok(f"  VM '{name}' restored."))
     dom = ET.fromstring(virt.domain_xml(name))
     print("  Disks:")
