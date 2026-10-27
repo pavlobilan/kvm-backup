@@ -303,10 +303,10 @@ def cmd_backup(vm, assume_yes, checksums):
         print("  and run there:")
         print(f"    {bold(install)}")
     else:
-        print("  On the new server, run:")
-        print(f"    {bold(install)}")
-        print(f"  If it fails with {bold('-bash: curl: command not found')}, install curl first and run it again:")
+        print("  On the new server, install curl first (minimal Debian does not include it):")
         print(f"    {bold('sudo apt install -y curl')}")
+        print("  Then install kvm-backup:")
+        print(f"    {bold(install)}")
     print(f"  This installs kvm-backup, creates {bold(dest + '/')} and opens the menu.")
     print(f"  In the menu choose {bold('2) Restore a VM')}; it will wait until the files are copied.")
     print()
