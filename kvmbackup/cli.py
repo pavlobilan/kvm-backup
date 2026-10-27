@@ -147,7 +147,8 @@ def choose(title, items, render):
         print(f"  {i}) {render(it)}")
     while True:
         try:
-            a = input(f"Number [1-{len(items)}, 0 to quit]: ").strip()
+            choices = "1" if len(items) == 1 else f"1-{len(items)}"
+            a = input(f"Number [{choices}, 0 to quit]: ").strip()
         except EOFError:
             return None
         if a == "0":
