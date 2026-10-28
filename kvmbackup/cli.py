@@ -383,9 +383,7 @@ def cmd_backup(vm, assume_yes, checksums):
         print(f"    {bold(install)}")
     print(f"  In its menu choose {bold('2) Restore VMs')}; it waits until the files are copied.")
     print()
-    print(f"  Copy these files with WinSCP to {bold(dest + '/')} on the new server.")
-    print("  In WinSCP type this path into the address bar: the parent folder cannot be listed")
-    print("  by a normal user, but this folder is open to the group " + config.get()["transfer_group"] + ".")
+    print(f"  Copy these files with WinSCP to {bold(dest + '/')} on the new server:")
     count = size = 0
     for name, m, archive in done:
         print()
@@ -581,8 +579,6 @@ def cmd_restore(archive, assume_yes, verify):
             print(f"  Free space in {root}/ on this server: {bold(human(fsutil.free_bytes(root)))}")
             print("  Tip: copy the archive first. Then step 2 shows every disk file that is still missing.")
             print(f"  WinSCP must log in as root or as a member of the group {bold(group)}.")
-            print("  Type the folder path into the WinSCP address bar: the parent folder cannot be listed")
-            print("  by a normal user.")
             print()
             if assume_yes or not wait_enter("  Press Enter to look again, or 0 to quit: "):
                 return 1
