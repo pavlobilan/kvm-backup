@@ -239,6 +239,7 @@ def run_restore(job, m, bdir, p, opts):
     try:
         # 1. Checksums
         _phase(job, 3, "Verify checksums")
+        verified = False
         if not opts.get("verify", True) or not any(mf[f["name"]].get("sha256") for f in files):
             job.log("⚠ Checksums are not verified (skipped or not stored in the archive).")
         if opts.get("verify", True):
@@ -256,9 +257,11 @@ def run_restore(job, m, bdir, p, opts):
                                        f"  Copy the file again from the old server and run: sudo kvm-backup restore")
                 if hasattr(prog, "finish"):
                     prog.finish("all files match")
+                verified = True
 
         # 2. Place files
-        _phase(job, 4, "Place disk files")
+        # A successful check goes straight on; a mismatch has already stopped the restore above
+        _phase(job, 4, "Place disk files", ask_first=not verified)
         path_map = {}
         placed = {}
         copy_total = sum(f["size"] for f in files if f["action"] == "copy")
@@ -445,10 +448,10 @@ def run_restore(job, m, bdir, p, opts):
                   "current": m.get("current_snapshot"), "nvram": ctx.get("nvram"), "warnings": warns}
 
 
-def _phase(job, n, title):
+def _phase(job, n, title, ask_first=True):
     """Start a numbered restore step (the terminal UI may ask to continue first)."""
     if hasattr(job, "phase"):
-        job.phase(n, title)
+        job.phase(n, title, ask_first)
     else:
         job.step(title)
 

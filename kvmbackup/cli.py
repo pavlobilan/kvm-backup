@@ -104,9 +104,10 @@ class TermJob:
         self.label = ""
         self._started = False
 
-    def phase(self, n, title):
-        """Numbered step; from the second one on, wait for Enter before starting it."""
-        if self._started and self.confirm and not pause():
+    def phase(self, n, title, ask_first=True):
+        """Numbered step; from the second one on, wait for Enter before starting it
+        (unless ask_first is False, e.g. right after a successful checksum check)."""
+        if self._started and self.confirm and ask_first and not pause():
             raise JobError("Cancelled. All changes made by this restore were rolled back.")
         self._started = True
         step(self.mode, n, self.total, f"{title} · {self.label}" if self.label else title)

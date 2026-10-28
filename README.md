@@ -50,7 +50,7 @@ Each step shows its result; the next one starts after you confirm with Enter. En
 
 1. **Choose backup archives** from `/var/lib/libvirt/images/kvm-backup/`: one or several (one per VM), the same way as on the old server. The tool waits if nothing has been copied yet.
 2. **Check files.** Every file listed in the archive is checked for presence and size; missing files are listed and the check can be repeated after copying them.
-3. **Verify checksums.**
+3. **Verify checksums.** If all files match, the restore goes on to step 4 without asking; on a mismatch it stops before anything is changed.
 4. **Place disk files** at their original paths.
 5. **Create the VM** in libvirt (links between disk files, NVRAM, networks, storage pool).
 6. **Restore snapshots**, including branches and the current snapshot.
