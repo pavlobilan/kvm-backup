@@ -238,7 +238,8 @@ def run_restore(job, m, bdir, p, opts):
 
     try:
         # 1. Checksums
-        _phase(job, 3, "Verify checksums")
+        # Starts right after the user confirmed the restore (or the previous VM finished)
+        _phase(job, 3, "Verify checksums", ask_first=False)
         verified = False
         if not opts.get("verify", True) or not any(mf[f["name"]].get("sha256") for f in files):
             job.log("⚠ Checksums are not verified (skipped or not stored in the archive).")
@@ -409,7 +410,7 @@ def run_restore(job, m, bdir, p, opts):
         _done(job, f"✓ VM '{name}' defined in libvirt")
 
         # 8. Snapshots (parents before children, which preserves branches)
-        _phase(job, 6, "Restore snapshots")
+        _phase(job, 6, "Restore snapshots", ask_first=not verified)
         if not snap_xml:
             job.log("The VM has no snapshots.")
         total = max(len(snap_xml), 1)
@@ -445,7 +446,7 @@ def run_restore(job, m, bdir, p, opts):
             os.remove(src)
         except OSError as e:
             job.log(f"⚠ Could not delete {src}: {e}")
-    job.result = {"vm": name, "files": files, "snapshots": len(snap_xml),
+    job.result = {"vm": name, "files": files, "snapshots": len(snap_xml), "verified": verified,
                   "current": m.get("current_snapshot"), "nvram": ctx.get("nvram"), "warnings": warns}
 
 

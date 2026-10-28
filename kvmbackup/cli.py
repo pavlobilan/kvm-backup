@@ -651,11 +651,8 @@ def cmd_restore(archive, assume_yes, verify):
         for (src, dst), n in moves.items():
             print(f"  {n} file(s) will be moved: {src}/ → {bold(dst + '/')}")
 
-        print()
+        # All files are present: start the restore without asking (Ctrl+C still rolls back)
         vm_names = [it["plan"]["name"] for it in items]
-        if not ask(f"  Restore {'VM' if len(items) == 1 else 'VMs'} {names(vm_names)} now?", True, assume_yes):
-            print("Cancelled.")
-            return 1
         job = TermJob("Restore", 7, confirm=not assume_yes)
         for it in items:
             job.label = it["plan"]["name"] if len(items) > 1 else ""
@@ -671,7 +668,8 @@ def cmd_restore(archive, assume_yes, verify):
     finally:
         shutil.rmtree(work, ignore_errors=True)
 
-    if not assume_yes:
+    # Without a checksum check every step waits for Enter; after a successful check it runs to the end
+    if not assume_yes and not all(r.get("verified") for _, _, r in restored):
         pause()
     step("Restore", 7, 7, "Result")
     for name, m, r in restored:
