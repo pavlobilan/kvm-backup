@@ -300,7 +300,8 @@ def run_restore(job, m, bdir, p, opts):
             _done(job, f"✓ {len(names)} file(s) {how} {d}/")
 
         # 3. Backing file chains
-        _phase(job, 5, "Create the VM")
+        # After a successful checksum check, placing the files needs no decision: go straight on
+        _phase(job, 5, "Create the VM", ask_first=not verified)
         job.step("Updating links between disk files", 71)
         for f in files:
             e = mf[f["name"]]
