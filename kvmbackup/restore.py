@@ -297,7 +297,7 @@ def run_restore(job, m, bdir, p, opts):
         if copy_total and hasattr(prog, "finish"):
             prog.finish("copied")
         for (how, d), names in placed.items():
-            _done(job, f"✔ {len(names)} file(s) {how} {d}/")
+            _done(job, f"✓ {len(names)} file(s) {how} {d}/")
 
         # 3. Backing file chains
         _phase(job, 5, "Create the VM")
@@ -405,7 +405,7 @@ def run_restore(job, m, bdir, p, opts):
             fh.write(xmlutil.tostring(dom))
         virt.virsh("define", dfile)
         rb.add(f"VM {name}", lambda: _undefine(name))
-        _done(job, f"✔ VM '{name}' defined in libvirt")
+        _done(job, f"✓ VM '{name}' defined in libvirt")
 
         # 8. Snapshots (parents before children, which preserves branches)
         _phase(job, 6, "Restore snapshots")
@@ -421,9 +421,9 @@ def run_restore(job, m, bdir, p, opts):
             virt.virsh("snapshot-create", name, "--xmlfile", sf, "--redefine")
         if m.get("current_snapshot"):
             virt.virsh("snapshot-current", name, m["current_snapshot"])
-            _done(job, f"✔ {len(snap_xml)} snapshot(s) restored, current: {m['current_snapshot']}")
+            _done(job, f"✓ {len(snap_xml)} snapshot(s) restored, current: {m['current_snapshot']}")
         elif snap_xml:
-            _done(job, f"✔ {len(snap_xml)} snapshot(s) restored")
+            _done(job, f"✓ {len(snap_xml)} snapshot(s) restored")
 
         if opts.get("autostart", True) and m["vm"].get("autostart"):
             virt.virsh("autostart", name, check=False)

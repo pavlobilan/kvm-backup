@@ -46,7 +46,7 @@ def header(t):
 
 
 class Bar:
-    """Progress bar. Turns green with ✔ on success, red with ✖ on failure."""
+    """Progress bar. Turns green with ✓ on success, red with ✗ on failure."""
 
     def __init__(self, total, label):
         self.total, self.label, self.done, self._last, self._closed = max(total, 1), label, 0, 0, False
@@ -85,10 +85,10 @@ class Bar:
 
     def finish(self, text="done"):
         self.done = max(self.done, self.total)
-        self._close("32", f"✔ {text}", text)
+        self._close("32", f"✓ {text}", text)
 
     def fail(self, text="failed"):
-        self._close("31", f"✖ {text}", text)
+        self._close("31", f"✗ {text}", text)
 
 
 class TermJob:
@@ -299,7 +299,7 @@ def cmd_backup(vm, assume_yes, checksums):
                                "Which VMs do you want to back up?", "VM")
         if not selected:
             return 0
-    print(ok(f"  ✔ Selected: {', '.join(selected)}"))
+    print(ok(f"  ✓ Selected: {', '.join(selected)}"))
 
     step("Backup", 2, 4, "Review the VMs" if len(selected) > 1 else f"Review VM '{selected[0]}'")
     for name in selected:
@@ -330,7 +330,7 @@ def cmd_backup(vm, assume_yes, checksums):
             print("Cancelled.")
             return 1
         print()
-    print(ok(f"  ✔ Shut off: {', '.join(selected)}"))
+    print(ok(f"  ✓ Shut off: {', '.join(selected)}"))
     if not ask(f"  Create a backup of {names(selected)}?", True, assume_yes):
         print("Cancelled.")
         return 1
@@ -414,13 +414,13 @@ def cmd_backup(vm, assume_yes, checksums):
         print("  " + warn("⚠ " + e))
     started = [n for n in selected if virt.domain_state(n) != "shut off"]
     if started:
-        print(bad(f"  ✖ Started before copying finished: {names(started)}."))
+        print(bad(f"  ✗ Started before copying finished: {names(started)}."))
         print(bad("    If a VM was running while its files were copied, the copy may be inconsistent:"))
         print(bad("    the restore will report a checksum mismatch. In that case shut the VM down"))
         print(bad("    and run the backup again."))
         print(warn("  Backup finished with a warning."))
         return 1
-    print(ok(f"  ✔ Files copied. {vm_word} stayed shut off; temporary WinSCP access removed."))
+    print(ok(f"  ✓ Files copied. {vm_word} stayed shut off; temporary WinSCP access removed."))
     print()
     print(f"  Continue on the new server: press {bold('Enter')} in the waiting menu, "
           f"or run {bold('sudo kvm-backup restore')}.")
@@ -501,20 +501,22 @@ def wait_enter(prompt):
 
 def show_check(p):
     moves = {}
+    # Column as wide as the longest file name, so the sizes line up
+    width = max([len(f["name"]) for f in p["files"]] + [20])
     for f in p["files"]:
-        name = f"{f['name']:<40} {human(f['size']):>10}"
+        name = f"{f['name']:<{width}}  {human(f['size']):>10}"
         if f["source"] and f["action"]:
             if f["action"] == "on-place":
-                print(f"  {ok('✔')} {name}  already in place")
+                print(f"  {ok('✓')} {name}  already in place")
             else:
                 key = (os.path.dirname(f["source"]), os.path.dirname(f["dest"]))
                 moves[key] = moves.get(key, 0) + 1
-                print(f"  {ok('✔')} {name}")
+                print(f"  {ok('✓')} {name}")
         elif not f["required"]:
             print(f"  {warn('–')} {name}  {warn('missing (ISO, optional)')}")
         else:
             why = "size mismatch" if f["status"] == "size" else "not found"
-            print(f"  {bad('✖')} {name}  {bad(why)}")
+            print(f"  {bad('✗')} {name}  {bad(why)}")
     for w in p["warnings"]:
         print("  " + warn("⚠ " + w))
     return moves
@@ -530,7 +532,7 @@ def show_result(name, m, r):
         print(f"    {tgt.get('dev') if tgt is not None else '?'}  {path}")
     snaps = virt.snapshot_list(name)
     cur = virt.snapshot_current(name)
-    mark = ok("✔") if len(snaps) == len(m["snapshots"]) else bad("✖")
+    mark = ok("✓") if len(snaps) == len(m["snapshots"]) else bad("✗")
     print(f"  Snapshots: {len(snaps)} of {len(m['snapshots'])} {mark}")
     if snaps:
         info = []
@@ -672,7 +674,7 @@ def cmd_restore(archive, assume_yes, verify):
         pause()
     step("Restore", 7, 7, "Result")
     for name, m, r in restored:
-        print(ok(f"  ✔ VM '{name}' restored."))
+        print(ok(f"  ✓ VM '{name}' restored."))
         show_result(name, m, r)
         print()
     print(ok("  Ready to start: Cockpit → Virtual machines, or:"))
