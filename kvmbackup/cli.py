@@ -56,9 +56,12 @@ class Bar:
         cols = shutil.get_terminal_size((100, 24)).columns
         tail = f" {frac * 100:5.1f}%  {human(self.done)} / {human(self.total)}"
         width = max(10, min(30, cols - len(self.label) - len(tail) - len(mark) - 8))
-        bar = "█" * int(frac * width) + "░" * (width - int(frac * width))
+        filled = int(frac * width)
+        # The done part is green while running; the whole bar turns green or red at the end
         if color:
-            bar = c(color, bar)
+            bar = c(color, "█" * filled + "░" * (width - filled))
+        else:
+            bar = c("32", "█" * filled) + "░" * (width - filled)
         line = f"  {self.label} {bar}{tail}"
         if mark:
             line += "  " + c(color, mark) if color else "  " + mark
