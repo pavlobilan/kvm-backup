@@ -48,7 +48,7 @@ Running the install command again updates kvm-backup to the latest version and a
 
 Steps 3–6 run for each selected VM in turn. If checksums are not verified (`--no-verify` or an archive without checksums), the tool waits for Enter after each step; entering 0 cancels and rolls back the changes made for the VM being restored.
 
-1. **Choose backup archives** from `/var/lib/libvirt/images/kvm-backup/`: one or several (one per VM), the same way as on the old server. The tool waits if nothing has been copied yet.
+1. **Choose backup archives** from `/var/lib/libvirt/images/kvm-backup/`: one or several (one per VM), the same way as on the old server. If there is only one backup, it is selected automatically. The tool waits if nothing has been copied yet.
 2. **Check files.** Every file listed in the archive is checked for presence and size; missing files are listed and the check can be repeated after copying them. When all files are present, the restore starts without asking (Ctrl+C cancels it and rolls back the VM being restored).
 3. **Verify checksums.** If all files match, the restore runs to the end without further questions; on a mismatch it stops before anything is changed.
 4. **Place disk files** at their original paths.

@@ -587,7 +587,8 @@ def cmd_restore(archive, assume_yes, verify):
             if assume_yes or not wait_enter("  Press Enter to look again, or 0 to quit: "):
                 return 1
         rows = [(p, [m["vm"]["name"], when(m["created"]), m["source_host"], os.path.basename(p)]) for p, m in found]
-        while True:
+        # Only one backup: nothing to choose
+        while len(found) > 1:
             archives = choose_many(f"Backup archives in {root}/:", ["VM", "Created", "From", "Archive"], rows,
                                    "Which backups do you want to restore?", "backup")
             if not archives:
@@ -598,6 +599,9 @@ def cmd_restore(archive, assume_yes, verify):
                 break
             print(bad(f"  Several backups of the same VM selected ({', '.join(dup)}); choose one backup per VM."))
             print()
+        else:
+            archives = [found[0][0]]
+            print(f"  One backup in {root}/: {bold(os.path.basename(archives[0]))}")
 
     work = os.path.join(root, ".work", f"restore-{os.getpid()}")
     os.makedirs(work, exist_ok=True)
