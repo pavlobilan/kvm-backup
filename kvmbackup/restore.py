@@ -224,7 +224,7 @@ class Rollback:
                 fn()
                 self.job.log(f"↩ Rolled back: {desc}")
             except Exception as e:  # noqa: BLE001
-                self.job.log(f"⚠ Could not roll back '{desc}': {e}")
+                self.job.log(f"! Could not roll back '{desc}': {e}")
 
 
 def run_restore(job, m, bdir, p, opts):
@@ -242,7 +242,7 @@ def run_restore(job, m, bdir, p, opts):
         _phase(job, 3, "Verify checksums", ask_first=False)
         verified = False
         if not opts.get("verify", True) or not any(mf[f["name"]].get("sha256") for f in files):
-            job.log("⚠ Checksums are not verified (skipped or not stored in the archive).")
+            job.log("! Checksums are not verified (skipped or not stored in the archive).")
         if opts.get("verify", True):
             todo = [f for f in files if mf[f["name"]].get("sha256")]
             if todo:
@@ -336,7 +336,7 @@ def run_restore(job, m, bdir, p, opts):
             shutil.copytree(os.path.join(bdir, m["tpm"]["dir"]), tdst, symlinks=True)
             rb.add("TPM state", lambda d=tdst: shutil.rmtree(d))
             if not fsutil.chown_names(tdst, m["tpm"]["owner"], m["tpm"]["group"], recursive=True):
-                job.log("⚠ TPM state owner not found; libvirt will set permissions on start.")
+                job.log("! TPM state owner not found; libvirt will set permissions on start.")
 
         os.makedirs(tmp, exist_ok=True)
         dom = ET.parse(os.path.join(bdir, m["domain_xml"])).getroot()
@@ -375,7 +375,7 @@ def run_restore(job, m, bdir, p, opts):
                                                                  virt.virsh("net-undefine", nn)))
             r = virt.virsh("net-start", n["name"], check=False)
             if r.returncode != 0:
-                job.log(f"⚠ Network {n['name']} defined but not started: {r.stderr.strip()}")
+                job.log(f"! Network {n['name']} defined but not started: {r.stderr.strip()}")
             if n.get("autostart"):
                 virt.virsh("net-autostart", n["name"], check=False)
             job.log(f"Network {n['name']} created")
@@ -445,7 +445,7 @@ def run_restore(job, m, bdir, p, opts):
         try:
             os.remove(src)
         except OSError as e:
-            job.log(f"⚠ Could not delete {src}: {e}")
+            job.log(f"! Could not delete {src}: {e}")
     job.result = {"vm": name, "files": files, "snapshots": len(snap_xml), "verified": verified,
                   "current": m.get("current_snapshot"), "nvram": ctx.get("nvram"), "warnings": warns}
 

@@ -120,7 +120,7 @@ class TermJob:
         print(f"  • {text}")
 
     def log(self, msg):
-        if msg.startswith("⚠"):
+        if msg.startswith("!"):
             print("    " + warn(msg))
         else:
             print(f"    {msg}")
@@ -315,7 +315,7 @@ def cmd_backup(vm, assume_yes, checksums):
             snap_tree(a["snapshots"], a["current"], "    ")
         print(f"  Disk and snapshot files: {len(a['files'])}, total {human(a['total_size'])}")
         for w in a["warnings"]:
-            print("  " + warn("⚠ " + w))
+            print("  " + warn("! " + w))
 
     print()
     # kvm-backup never shuts a VM down itself: wait until the user does it
@@ -325,7 +325,7 @@ def cmd_backup(vm, assume_yes, checksums):
         if not running:
             break
         for n, state in running:
-            print(warn(f"  ⚠ VM '{n}' is {state}. It must be shut off for a consistent copy of its disks."))
+            print(warn(f"  ! VM '{n}' is {state}. It must be shut off for a consistent copy of its disks."))
         print("    Shut it down from the guest OS or in Cockpit (Shut down), then check again.")
         if assume_yes or not wait_enter("    Press Enter to check again, or 0 to quit: "):
             print("Cancelled.")
@@ -352,7 +352,7 @@ def cmd_backup(vm, assume_yes, checksums):
     if not assume_yes:
         acl, err = fsutil.grant_read_acl([e["original_path"] for _, m, _ in done for e in m["files"]])
         if err:
-            print("  " + warn("⚠ " + err))
+            print("  " + warn("! " + err))
 
     dest = config.get()["backup_root"]
     cmd = install_command()
@@ -369,7 +369,7 @@ def cmd_backup(vm, assume_yes, checksums):
         except (KeyboardInterrupt, EOFError):
             print()
             for e in fsutil.revoke_acl(acl):
-                print("  " + warn("⚠ " + e))
+                print("  " + warn("! " + e))
             print(warn("  Interrupted. Temporary WinSCP access was removed."))
             print(f"  The archives are kept in {dest}/")
             return False
@@ -406,13 +406,13 @@ def cmd_backup(vm, assume_yes, checksums):
     print(f"     The new server needs at least {human(size)} free in {dest}/")
     print()
     vm_word = "VM" if len(selected) == 1 else "VMs"
-    print(bad(f"  ⚠ Do NOT start {vm_word} {names(selected)} until all files are copied."))
+    print(bad(f"  ! Do NOT start {vm_word} {names(selected)} until all files are copied."))
     print(bad("    Starting a VM changes its disk files, and the copy on the new server will not match."))
     print()
     if not confirm("Press Enter when all files are copied:"):
         return 1
     for e in fsutil.revoke_acl(acl):
-        print("  " + warn("⚠ " + e))
+        print("  " + warn("! " + e))
     started = [n for n in selected if virt.domain_state(n) != "shut off"]
     if started:
         print(bad(f"  ✗ Started before copying finished: {names(started)}."))
@@ -519,7 +519,7 @@ def show_check(p):
             why = "size mismatch" if f["status"] == "size" else "not found"
             print(f"  {bad('✗')} {name}  {bad(why)}")
     for w in p["warnings"]:
-        print("  " + warn("⚠ " + w))
+        print("  " + warn("! " + w))
     return moves
 
 
@@ -545,7 +545,7 @@ def show_result(name, m, r):
     if r.get("nvram"):
         print(f"  NVRAM: {r['nvram']}")
     for w in r.get("warnings") or []:
-        print("  " + warn("⚠ " + w))
+        print("  " + warn("! " + w))
     print(f"  State: {st(virt.domain_state(name))} · autostart: {'yes' if virt.autostart(name) else 'no'}")
 
 

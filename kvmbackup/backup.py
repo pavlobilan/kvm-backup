@@ -227,7 +227,7 @@ def run_backup(job, vm, opts):
     job.step("Collecting configuration, disks and snapshots", 10)
     a = analyse(vm, opts.get("taken"))
     for w in a["warnings"]:
-        job.log("⚠ " + w)
+        job.log("! " + w)
     job.log(f"Snapshots: {len(a['snapshots'])}, disk files: {len(a['files'])}, size: {human(a['total_size'])}")
 
     stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
