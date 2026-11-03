@@ -337,10 +337,6 @@ def cmd_backup(vm, assume_yes, checksums):
         print("  SHA-256 checksums let the restore detect a damaged copy before changing anything,")
         print("  but every disk file is read once more here and once more on the new server.")
         checksums = ask("  Calculate checksums?", True)
-        print()
-    if not ask(f"  Create a backup of {names(selected)}?", True, assume_yes):
-        print("Cancelled.")
-        return 1
 
     step("Backup", 3, 4, "Create the backups" if len(selected) > 1 else "Create the backup")
     done, taken = [], set()
