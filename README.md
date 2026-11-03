@@ -40,8 +40,8 @@ Running the install command again updates kvm-backup to the latest version and a
 ## Back up (old server)
 
 1. **Choose virtual machines:** one or several, for example `2`, `1 3` or a range `1-3`.
-2. **Review the VMs** (state, snapshot tree, disk files). A running VM is never shut down by the tool: it asks you to shut it down and checks again.
-3. **Create the backups.** A SHA-256 checksum of every disk and snapshot file is calculated, and the configuration of each VM is saved to its own archive: `/var/lib/libvirt/images/kvm-backup/<VM>_<date>.tar.gz`. Backups are independent of each other.
+2. **Review the VMs** (state, snapshot tree, disk files). A running VM is never shut down by the tool: it asks you to shut it down and checks again. Then it asks whether to calculate SHA-256 checksums (default: yes).
+3. **Create the backups.** If chosen, a SHA-256 checksum of every disk and snapshot file is calculated, and the configuration of each VM is saved to its own archive: `/var/lib/libvirt/images/kvm-backup/<VM>_<date>.tar.gz`. Backups are independent of each other.
 4. **Copy the files to the new server.** The tool shows the commands that install kvm-backup on the new server (`sudo apt install -y curl`, then the install command; this creates the target directory), every file to copy with its source directory and the target directory (`/var/lib/libvirt/images/kvm-backup/`). Copy them with WinSCP while the VMs stay shut off; after Enter, temporary read access is removed and the tool reports whether the VMs stayed off.
 
 ## Restore (new server)
@@ -69,7 +69,7 @@ The step that lists the files to copy shows the total size; the new server needs
 
 ## Checksums
 
-- During backup, the SHA-256 checksum and size of every disk and snapshot file are stored in `manifest.json` inside the archive.
+- During backup, the SHA-256 checksum and size of every disk and snapshot file are stored in `manifest.json` inside the archive. Checksums are optional (asked in step 2, default yes, or skipped with `--no-checksum`); without them the restore checks only presence and size of the files.
 - During restore, every file is checked for presence and size, then its SHA-256 is compared with the archive. On a mismatch the restore stops before anything is changed on the server.
 - Not covered by a separate checksum: ISO images (optional), the configuration archive itself (protected only by the gzip integrity check) and the result of copying disks between different file systems on the new server.
 
