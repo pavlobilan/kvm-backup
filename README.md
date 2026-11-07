@@ -44,6 +44,24 @@ Running the install command again updates kvm-backup to the latest version and a
 3. **Create the backups.** If chosen, a SHA-256 checksum of every disk and snapshot file is calculated, and the configuration of each VM is saved to its own archive: `/var/lib/libvirt/images/kvm-backup/<VM>_<date>.tar.gz`. Backups are independent of each other.
 4. **Copy the files to the new server.** The tool shows the commands that install kvm-backup on the new server (`sudo apt install -y curl`, then the install command; this creates the target directory), every file to copy with its source directory and the target directory (`/var/lib/libvirt/images/kvm-backup/`). Copy them with WinSCP while the VMs stay shut off; after Enter, temporary read access is removed and the tool reports whether the VMs stayed off.
 
+### If the connection is lost during copying
+
+Two connections are involved in step 4: the SSH session where kvm-backup waits for Enter, and WinSCP.
+
+**The SSH session with kvm-backup is lost** (or Ctrl+C is pressed):
+
+- kvm-backup removes the temporary read access of the `kvmbackup` group right away and exits.
+- The VM stays shut off, its disk files are not changed, and the archive is kept in `/var/lib/libvirt/images/kvm-backup/`.
+- The file WinSCP is copying at that moment usually finishes, because it is already open; the next files fail with `Permission denied`.
+
+To continue, connect again and run `sudo kvm-backup backup` for the same VM. It creates a new archive and grants access again. Copy the new archive to the new server and delete the old one there. Disk files already copied do not need to be copied again if the VM was not started in between: the restore confirms this with the checksums.
+
+The VM can now be started again safely; kvm-backup did not change it. The copy on the new server is then outdated, because a running VM changes its disk files, and the restore will report a checksum mismatch and change nothing. To migrate later, shut the VM down again, run a new backup and copy the files from the new list.
+
+To keep the session alive after a lost connection, run the backup inside `tmux` or `screen` and reattach to it (`tmux attach`).
+
+**WinSCP is disconnected:** kvm-backup keeps waiting and access stays granted. The new server is left with an incomplete `*.filepart` file; reconnect and copy again (WinSCP offers to resume or overwrite). A damaged copy is detected by the checksum check before the restore changes anything.
+
 ## Restore (new server)
 
 Steps 3–6 run for each selected VM in turn. If checksums are not verified (`--no-verify` or an archive without checksums), the tool waits for Enter after each step; entering 0 cancels and rolls back the changes made for the VM being restored.
