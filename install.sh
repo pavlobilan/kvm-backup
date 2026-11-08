@@ -67,9 +67,26 @@ chmod 755 /usr/local/bin/kvm-backup
 
 # Group allowed to read disks (old server) and write to $DATA_DIR (new server) via WinSCP
 getent group "$GROUP" >/dev/null || groupadd --system "$GROUP"
-if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
-  usermod -aG "$GROUP" "$SUDO_USER"
-  say "User $SUDO_USER added to group $GROUP (takes effect after the next SSH/WinSCP login)"
+# Members: the user who ran sudo and every administrator (groups sudo, admin, wheel),
+# so WinSCP works even when the installer was run from a root shell
+USERS="${SUDO_USER:-}"
+for g in sudo admin wheel; do
+  USERS="$USERS $(getent group "$g" | cut -d: -f4 | tr ',' ' ' || true)"
+done
+ADDED=""
+for u in $(printf '%s\n' $USERS | sort -u); do
+  [ "$u" = root ] && continue
+  id "$u" >/dev/null 2>&1 || continue
+  id -nG "$u" | tr ' ' '\n' | grep -qx "$GROUP" && continue
+  usermod -aG "$GROUP" "$u"
+  ADDED="$ADDED $u"
+done
+if [ -n "$ADDED" ]; then
+  say "Added to group $GROUP:$ADDED (takes effect after the next SSH/WinSCP login)"
+fi
+MEMBERS="$(getent group "$GROUP" | cut -d: -f4)"
+if [ -z "$MEMBERS" ]; then
+  say "No user is in group $GROUP; WinSCP must log in as root, or add a user: usermod -aG $GROUP <user>"
 fi
 mkdir -p "$DATA_DIR"
 chown root:"$GROUP" "$DATA_DIR"
